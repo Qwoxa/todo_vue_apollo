@@ -5,17 +5,13 @@
         class="loadMoreSection"
         v-if="newTodosCount"
         v-on:click="loadMoreClicked"
-      >
-        New tasks have arrived! ({{ newTodosCount }})
-      </div>
+      >New tasks have arrived! ({{ newTodosCount }})</div>
       <TodoItem v-bind:todos="todos" v-bind:type="type" />
       <div
         class="loadMoreSection"
         v-if="olderTodosAvailable"
         v-on:click="loadOlderClicked"
-      >
-        Load older tasks
-      </div>
+      >Load older tasks</div>
     </div>
   </div>
 </template>
@@ -60,12 +56,29 @@ const GET_OLD_PUBLIC_TODOS = gql`
   }
 `;
 
+const GET_NEW_PUBLIC_TODOS = gql`
+  query getNewPublicTodos($latestTodoVisibleId: Int!) {
+    todos(
+      where: { is_public: { _eq: true }, id: { _gt: $latestTodoVisibleId } }
+      order_by: { created_at: desc }
+    ) {
+      id
+      title
+      created_at
+      is_public
+      user {
+        name
+      }
+    }
+  }
+`;
+
 export default {
   components: {
     TodoItem,
     TodoFilters
   },
-  created() {
+  mounted() {
     const that = this;
     this.$apollo
       .query({
@@ -80,16 +93,15 @@ export default {
           })
           .subscribe({
             next({ data }) {
-              console.log("here", data);
               if (data.todos.length) {
                 if (data.todos[0].id !== that.todos[0].id) {
-                  that.newTodosCount = that.newTodosCount + data.length;
+                  that.newTodosCount = that.newTodosCount + data.todos.length;
                 }
               }
-            },
-            error(err) {
-              console.log(err);
             }
+            // error(err) {
+            //   // console.log(err);
+            // }
           });
       });
   },
@@ -102,10 +114,42 @@ export default {
       type: "public"
     };
   },
-  mounted() {},
   methods: {
-    loadMoreClicked: function() {},
-    loadOlderClicked: function() {}
+    loadMoreClicked: function() {
+      this.newTodosCount = 0;
+      this.$apollo
+        .query({
+          query: GET_NEW_PUBLIC_TODOS,
+          variables: {
+            latestTodoVisibleId: this.todos.length ? this.todos[0].id : null
+          }
+        })
+        .then(({ data }) => {
+          if (data.todos.length) {
+            const mergedTodos = data.todos.concat(this.todos);
+            this.todos = mergedTodos;
+          }
+        });
+    },
+    loadOlderClicked: function() {
+      this.$apollo
+        .query({
+          query: GET_OLD_PUBLIC_TODOS,
+          variables: {
+            oldestTodoId: this.todos.length
+              ? this.todos[this.todos.length - 1].id
+              : null
+          }
+        })
+        .then(({ data }) => {
+          if (data.todos.length) {
+            const mergedTodos = this.todos.concat(data.todos);
+            this.todos = mergedTodos;
+          } else {
+            this.olderTodosAvailable = false;
+          }
+        });
+    }
   }
 };
 </script>
